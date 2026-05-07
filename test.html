@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Environmental Impact Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            /* Very light slate */
+            --card-bg: #ffffff;
+            --accent-primary: #6366f1;
+            /* Friendly Indigo */
+            --accent-secondary: #0d9488;
+            /* Earthy Teal */
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --border-soft: rgba(0, 0, 0, 0.05);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+        }
+
+        /* 16:9 Container */
+        .dashboard-container {
+            width: 94vw;
+            aspect-ratio: 16 / 9;
+            max-height: 94vh;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto 1fr auto;
+            gap: 1.25rem;
+            padding: 1.5rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 1.25rem;
+            padding: 1.25rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04);
+            border: 1px solid var(--border-soft);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Placeholder Styling */
+        .placeholder-box {
+            flex-grow: 1;
+            background: #f1f5f9;
+            border: 2px dashed #cbd5e1;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 0.75rem;
+        }
+
+        .placeholder-label {
+            color: #94a3b8;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .top-row {
+            grid-column: span 2;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
+        }
+
+        .bottom-row {
+            grid-column: span 2;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.25rem;
+        }
+
+        .mini-box {
+            background: var(--card-bg);
+            border-radius: 1rem;
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--border-soft);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+        }
+
+        .accent-label {
+            color: var(--accent-secondary);
+            font-weight: 700;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+    </style>
+</head>
+
+<body>
+
+
+
+    <body class="bg-[#f8fafc]">
+        <div id="capture-wrapper" class="p-10 inline-block">
+            <div class="dashboard-container">
+
+                <div class="top-row">
+                    <div class="mini-box">
+                        <span class="accent-label">Pollutant Type</span>
+                        <div class="text-lg font-semibold mt-1">SO₂ <span
+                                class="text-xs font-normal text-slate-400">(Sulfur Dioxide)</span></div>
+                    </div>
+                    <div class="mini-box">
+                        <span class="accent-label">Total Released</span>
+                        <div class="text-lg font-semibold mt-1">1.0M <span
+                                class="text-sm font-normal text-slate-500">tonnes</span></div>
+                    </div>
+                    <div class="mini-box">
+                        <span class="accent-label">Current Location</span>
+                        <div class="text-lg font-semibold mt-1 text-indigo-600">Sudbury, ON</div>
+                    </div>
+                    <div class="mini-box">
+                        <span class="accent-label">Analysis Period</span>
+                        <div class="text-lg font-semibold mt-1">5 Year Cycle</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Release Trends Over Time</h2>
+                    <div class="placeholder-box">
+                        <span class="placeholder-label">[ SO₂ Emission Graph ]</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Geographic Concentration</h2>
+                    <div class="placeholder-box">
+                        <span class="placeholder-label">[ Regional Heatmap ]</span>
+                    </div>
+                </div>
+
+                <div class="bottom-row">
+                    <div class="card !flex-row items-center gap-4">
+                        <div
+                            class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                            🕒</div>
+                        <div>
+                            <span class="accent-label" style="color:#b45309">Timeline</span>
+                            <div class="text-xl font-bold">2021 – 2026</div>
+                        </div>
+                    </div>
+
+                    <div class="card !flex-row items-center gap-4">
+                        <div
+                            class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                            📍</div>
+                        <div>
+                            <span class="accent-label" style="color:#4338ca">Focal Point</span>
+                            <div class="text-xl font-bold">Greater Sudbury</div>
+                        </div>
+                    </div>
+
+                    <div class="card !flex-row items-center gap-4">
+                        <div
+                            class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+                            ☁️</div>
+                        <div>
+                            <span class="accent-label" style="color:#475569">Target Agent</span>
+                            <div class="text-xl font-bold">Sulpher Dioxide</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </body>
+
+</body>
+<button id="export-btn"
+    style="position:fixed; bottom:20px; right:20px; z-index:100; padding:10px; border-radius:8px; background:#6366f1; color:white; cursor:pointer;">
+    Export as JPG
+</button>
+
+<script>
+    document.getElementById('export-btn').addEventListener('click', function () {
+        const dashboard = document.querySelector('.dashboard-container');
+        html2canvas(dashboard, {
+            backgroundColor: '#f8fafc', // Matches your friendly background
+            scale: 2 // Increases quality for the export
+        }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = 'environmental-dashboard.jpg';
+            link.href = canvas.toDataURL('image/jpeg', 0.9); // 0.9 is the quality
+            link.click();
+        });
+    });
+</script>
+
+</html>
