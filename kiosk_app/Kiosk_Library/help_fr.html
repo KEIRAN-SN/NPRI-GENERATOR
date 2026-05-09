@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instructions de l'exposition - Guide INRP de Science Nord</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --sn-orange: #e46409; 
+            --bg-light: #fff7ed;
+            --text-main: #431407;
+            --text-dim: #7c2d12;
+            --tile-yellow: #facc15;
+            --tile-grey: #94a3b8;
+            --tile-blue: #3b82f6;
+            --white: #ffffff;
+        }
+
+        * { box-sizing: border-box; }
+
+        body, html {
+            margin: 0; 
+            padding: 0;
+            width: 1920px; 
+            height: 1080px;
+            overflow: hidden; 
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--sn-orange);
+            color: var(--white);
+        }
+
+        .main-wrapper {
+            display: flex; 
+            flex-direction: column;
+            width: 1920px;
+            height: 1080px;
+            padding: 40px 100px;
+            background-image: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1) 0%, transparent 80%);
+        }
+
+        /* --- Branding Header --- */
+        .brand-header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 30px;
+            height: 160px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .logo-container {
+            background: white;
+            padding: 20px 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 600px;
+            height: 100%;
+        }
+
+        .logo-container img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* --- NPRI Info Section --- */
+        .info-box {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 25px 40px;
+            border-radius: 30px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            margin-bottom: 30px;
+            text-align: center;
+            animation: fadeIn 1s ease-out 0.2s both;
+        }
+
+        .info-box h2 { margin: 0 0 5px 0; color: #ffedd5; text-transform: uppercase; letter-spacing: 0.2em; font-size: 1rem; }
+        .info-box p { margin: 0; font-size: 1.5rem; line-height: 1.3; font-weight: 400; color: var(--white); }
+
+        h1 { 
+            font-size: 3.5rem; 
+            font-weight: 700; 
+            margin-bottom: 30px; 
+            text-align: center; 
+            text-transform: uppercase; 
+            letter-spacing: -0.01em;
+            animation: fadeIn 1s ease-out 0.4s both;
+        }
+
+        /* --- Steps Grid --- */
+        .instruction-grid {
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px; 
+            width: 100%;
+            flex: 1; 
+            align-items: center;
+        }
+
+        .card {
+            background: var(--white);
+            color: var(--sn-orange);
+            border-radius: 40px;
+            padding: 45px 35px;
+            text-align: center;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.2);
+            display: flex; 
+            flex-direction: column; 
+            align-items: center;
+            position: relative;
+            height: 100%; 
+            justify-content: center;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .card:nth-child(1) { animation-delay: 0.6s; }
+        .card:nth-child(2) { animation-delay: 0.8s; }
+        .card:nth-child(3) { animation-delay: 1.0s; }
+
+        .step-number {
+            position: absolute; 
+            top: -25px; 
+            left: 50%; 
+            transform: translateX(-50%);
+            background: #ffedd5; 
+            color: var(--sn-orange);
+            width: 60px; 
+            height: 60px; 
+            border-radius: 50%;
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            font-weight: 800; 
+            font-size: 1.8rem;
+            border: 4px solid var(--sn-orange);
+        }
+
+        .icon-box {
+            width: 90px; 
+            height: 90px; 
+            background: var(--bg-light);
+            border-radius: 25px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            margin-bottom: 20px; 
+            color: var(--sn-orange);
+        }
+
+        /* Icon animations */
+        .card:nth-child(1) svg { animation: iconPulse 2s infinite ease-in-out; }
+        .card:nth-child(2) svg { animation: iconBounce 2s infinite ease-in-out; }
+        .card:nth-child(3) svg { animation: iconWiggle 3s infinite ease-in-out; }
+
+        .card h3 { font-size: 2rem; margin-bottom: 12px; font-weight: 700; }
+        .card p { font-size: 1.15rem; line-height: 1.5; color: var(--text-dim); margin: 0; }
+
+        /* --- TILE FOOTER --- */
+        .tile-footer {
+            height: 140px;
+            display: flex; 
+            justify-content: space-between; 
+            gap: 40px;
+            align-items: center;
+            margin-top: 30px;
+            animation: fadeInUp 1s ease-out 1.2s both;
+        }
+
+        .mini-tile {
+            flex: 1; 
+            padding: 30px;
+            border-radius: 24px;
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            gap: 25px;
+            font-weight: 700; 
+            font-size: 1.4rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            border: 3px solid rgba(255,255,255,0.4);
+            transition: transform 0.3s ease;
+        }
+
+        .tile-yellow { background: var(--tile-yellow); color: #854d0e; }
+        .tile-grey { background: var(--tile-grey); color: #1e293b; }
+        .tile-blue { background: var(--tile-blue); color: #f0f9ff; }
+
+        .shape-preview {
+            width: 60px; 
+            height: 60px; 
+            border-radius: 12px;
+            background: rgba(0,0,0,0.1); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            font-size: 2rem;
+        }
+
+        svg { width: 50px; height: 50px; fill: none; stroke: currentColor; stroke-width: 2.5; }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes iconPulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.15); opacity: 0.7; }
+        }
+        @keyframes iconBounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes iconWiggle {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-8deg); }
+            75% { transform: rotate(8deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-wrapper">
+        <div class="brand-header">
+            <div class="logo-container">
+                <img src="logo.webp" alt="Logo de Science Nord / Science North">
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h2>À propos de la base de données</h2>
+            <p>L'<b>Inventaire national des rejets de polluants (INRP)</b> est le registre public des polluants du Canada. Cette exposition vous aide à explorer les impacts industriels sur notre environnement grâce à la visualisation de données.</p>
+        </div>
+
+        <h1>Comment explorer</h1>
+
+        <div class="instruction-grid">
+            <div class="card">
+                <div class="step-number">1</div>
+                <div class="icon-box">
+                    <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                </div>
+                <h3>Choisir les tuiles</h3>
+                <p>Choisissez une tuile de chaque catégorie dans les bacs. Chaque tuile agit comme un filtre de recherche spécifique.</p>
+            </div>
+
+            <div class="card">
+                <div class="step-number">2</div>
+                <div class="icon-box">
+                    <svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>
+                </div>
+                <h3>Placer dans les fentes</h3>
+                <p>Associez les formes géométriques de vos tuiles aux fentes correspondantes sur la table.</p>
+            </div>
+
+            <div class="card">
+                <div class="step-number">3</div>
+                <div class="icon-box">
+                    <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                </div>
+                <h3>Voir les résultats</h3>
+                <p>L'écran générera automatiquement un rapport personnalisé basé sur votre combinaison unique.</p>
+            </div>
+        </div>
+
+        <div class="tile-footer">
+            <div class="mini-tile tile-yellow">
+                <div class="shape-preview">■</div>
+                Filtre Lieu
+            </div>
+            <div class="mini-tile tile-grey">
+                <div class="shape-preview">▲</div>
+                Filtre Période
+            </div>
+            <div class="mini-tile tile-blue">
+                <div class="shape-preview">●</div>
+                Filtre Polluant
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dummyCanvas = document.createElement('canvas');
+        dummyCanvas.width = dummyCanvas.height = 1;
+        dummyCanvas.style.position = 'fixed'; dummyCanvas.style.opacity = '0.01';
+        document.body.appendChild(dummyCanvas);
+        const dtx = dummyCanvas.getContext('2d');
+        function keepAlive() {
+            dtx.clearRect(0, 0, 1, 1); dtx.fillRect(0, 0, 1, 1);
+            requestAnimationFrame(keepAlive);
+        }
+        keepAlive();
+        window.releaseDashboard = function() { console.log("Page d'aide de Science Nord prête"); };
+    </script>
+</body>
+</html>

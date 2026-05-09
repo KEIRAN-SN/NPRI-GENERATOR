@@ -1,3 +1,4 @@
+# --- General Ignores ---
 venv/
 data/
 .env
@@ -7,8 +8,14 @@ rfid_database.json
 Kiosk_Library/
 main.exe
 config.json
+
+# --- Kiosk App logic ---
+# 1. Ignore everything in kiosk_app
 kiosk_app/*
-!kiosk_app/source
+
+# 2. Allow the Library folder and ONLY the specific files you listed
+!kiosk_app/Kiosk_Library/
+kiosk_app/Kiosk_Library/*
 !kiosk_app/Kiosk_Library/help_fr.html
 !kiosk_app/Kiosk_Library/help_en.html
 !kiosk_app/Kiosk_Library/logo.webp
@@ -16,18 +23,9 @@ kiosk_app/*
 !kiosk_app/Kiosk_Library/welcome_en.html
 !kiosk_app/Kiosk_Library/welcome_video.webm
 !kiosk_app/Kiosk_Library/welcome.html
-kiosk_app/source/NPRI Viewer.spec
-kiosk_app/source/build/NPRI Viewer/Analysis-00.toc
-kiosk_app/source/build/NPRI Viewer/base_library.zip
-kiosk_app/source/build/NPRI Viewer/EXE-00.toc
-kiosk_app/source/build/NPRI Viewer/NPRI Viewer.pkg
-kiosk_app/source/build/NPRI Viewer/PKG-00.toc
-kiosk_app/source/build/NPRI Viewer/PYZ-00.pyz
-kiosk_app/source/build/NPRI Viewer/PYZ-00.toc
-kiosk_app/source/build/NPRI Viewer/warn-NPRI Viewer.txt
-kiosk_app/source/build/NPRI Viewer/xref-NPRI Viewer.html
-kiosk_app/source/build/NPRI Viewer/localpycs/pyimod01_archive.pyc
-kiosk_app/source/build/NPRI Viewer/localpycs/pyimod02_importers.pyc
-kiosk_app/source/build/NPRI Viewer/localpycs/pyimod03_ctypes.pyc
-kiosk_app/source/build/NPRI Viewer/localpycs/pyimod04_pywin32.pyc
-kiosk_app/source/build/NPRI Viewer/localpycs/struct.pyc
+
+# 3. Allow the source folder but ignore its build artifacts
+!kiosk_app/source/
+kiosk_app/source/build/
+kiosk_app/source/dist/
+kiosk_app/source/*.spec
