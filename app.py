@@ -286,4 +286,4 @@ def main():
     kiosk_config_ui(raw_df, subs_list, min_y, max_y, {})
 
 if __name__ == "__main__":
-    main() 
+    main()
