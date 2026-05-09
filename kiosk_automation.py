@@ -2,11 +2,16 @@ import io, zipfile
 from generator import create_html_report
 from data_engine import filter_by_radius
 
-def generate_kiosk_zip(df, loc_map, pol_map, time_list):
+def generate_kiosk_zip(df, loc_map, pol_map, time_list, progress_callback=None):
     """Synchronized batch generator producing both EN and FR reports with missing data warnings."""
     zip_buffer = io.BytesIO()
     # Track items that return no data for the final report
     missing_data_log = []
+    
+    # Calculate total steps for the progress bar
+    valid_pols = [p for p in pol_map.values() if str(p.get("data_name", "")).strip()]
+    total_steps = len(loc_map) * len(valid_pols) * len(time_list)
+    current_step = 0
     
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for l_id, l_info in loc_map.items():
@@ -44,8 +49,13 @@ def generate_kiosk_zip(df, loc_map, pol_map, time_list):
                 p_target_fr = match_row["Substance_FR"].values[0] if not match_row.empty else p_target_en
 
                 for t_info in time_list:
+                    current_step += 1
                     years = t_info["years"]
                     time_label = f"{years[0]}-{years[1]}"
+                    
+                    # Update progress bar
+                    if progress_callback:
+                        progress_callback(current_step, total_steps, f"Processing {final_location_label} - {p_target_en} ({time_label})")
                     
                     # --- Generate English Version ---
                     mask_en = (loc_df["Substance_EN"] == p_target_en) & (loc_df["Year"].between(years[0], years[1]))
@@ -93,4 +103,6 @@ def generate_kiosk_zip(df, loc_map, pol_map, time_list):
             zip_file.writestr("WARNINGS_MISSING_DATA.txt", warning_content)
                         
     zip_buffer.seek(0)
-    return zip_buffer
+    
+    # Return both the zip buffer and the missing data log array
+    return zip_buffer, missing_data_log
