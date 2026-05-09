@@ -1,211 +1,266 @@
 import streamlit as st
-import os
 import pandas as pd
-import json
-import time
 from data_engine import process_files, filter_by_radius, normalize_quantity
 from ui_components import workspace_manager_ui, kiosk_config_ui
 from dashboard import render_main_dashboard
 
-# 1. PAGE CONFIG & STATE INITIALIZATION
-st.set_page_config(layout="wide", page_title="NPRI Data Explorer")
+# --- PAGE SETUP ---
+st.set_page_config(page_title="NPRI Data Explorer", layout="wide", page_icon="🌲")
 
-# Initialize Session States
-if "active_selections" not in st.session_state:
-    st.session_state.active_selections = []
-if "kiosk_locs" not in st.session_state: 
-    st.session_state.kiosk_locs = {}
-if "kiosk_pols" not in st.session_state: 
-    st.session_state.kiosk_pols = {}
-if "cascading_df" not in st.session_state:
-    st.session_state.cascading_df = None
-if "lang" not in st.session_state:
+# --- SESSION STATE INITIALIZATION ---
+if "lang" not in st.session_state: 
     st.session_state.lang = "EN"
-if "raw_df_loaded" not in st.session_state:
-    st.session_state.raw_df_loaded = None
+if "active_selections" not in st.session_state: 
+    st.session_state.active_selections = []
+if "kiosk_locs" not in st.session_state:
+    st.session_state.kiosk_locs = {}
+if "kiosk_pols" not in st.session_state:
+    st.session_state.kiosk_pols = {}
+if "kiosk_times" not in st.session_state:
+    st.session_state.kiosk_times = []
 
-# --- 2. GLOBAL SIDEBAR (DATA LOADING & LANGUAGE) ---
-with st.sidebar:
-    st.title("🌲 NPRI Explorer" if st.session_state.lang == "EN" else "🌲 Explorateur INRP")
+# --- MULTI-DIRECTIONAL CROSS-FILTERING ENGINE ---
+def get_filtered_options(df, filters, target):
+    """
+    Calculates available options for a specific dropdown based on ALL OTHER active filters.
+    This creates true multi-directional cross-filtering without needing a Sync button.
+    """
+    mask = pd.Series(True, index=df.index)
     
-    folder_path = st.text_input(
-        "Data Path:" if st.session_state.lang == "EN" else "Chemin des données :", 
-        value="./data"
-    )
-    
-    # Language Toggle using Radio
-    new_lang = st.radio("Language / Langue", ["EN", "FR"], 
-                        index=0 if st.session_state.lang == "EN" else 1, 
-                        horizontal=True)
-    if new_lang != st.session_state.lang:
-        st.session_state.lang = new_lang
-        st.rerun()
-    
-    # Define Dynamic UI Labels globally for the fragment to access
-    lang = st.session_state.lang
-    L_SUB = "Substance_EN" if lang == "EN" else "Substance_FR"
-    T_SYNC = "🔄 Sync All Filters" if lang == "EN" else "🔄 Synchroniser les filtres"
-    T_INC = "➕ Include" if lang == "EN" else "➕ Inclure"
-    T_EXC = "➖ Exclude" if lang == "EN" else "➖ Exclure"
-
-# --- 3. DATA LOADING ---
-if st.session_state.raw_df_loaded is None:
-    if os.path.exists(folder_path):
-        with st.status("📥 Syncing Database...") as status:
-            df, message = process_files(folder_path)
-            if df is not None:
-                # Ensure every row has a unique ID for workspace masking
-                df["_uid"] = df.index.astype(str)
-                st.session_state.raw_df_loaded = df
-                status.update(label=f"✅ {message}", state="complete")
+    # 1. Always apply Mining mask if selected
+    if filters.get("mining"):
+        mask &= df["NAICS_Code"].astype(str).str.startswith(("21", "331"))
+        
+    # 2. Apply all other active filters EXCEPT the target we are currently generating options for
+    if target != "Province" and filters.get("prov") not in ["All", "Tous"]:
+        mask &= df["Province"] == filters["prov"]
+        
+    if target != "City" and filters.get("city") not in ["All", "Tous"]:
+        rad = filters.get("rad", 0.0)
+        if rad > 0:
+            # If a radius is applied, filter by distance instead of strict city name
+            c_row = df[df["City"] == filters["city"]].dropna(subset=["Lat", "Lon"])
+            if not c_row.empty:
+                rad_df = filter_by_radius(df, float(c_row.iloc[0].Lat), float(c_row.iloc[0].Lon), rad)
+                mask &= df.index.isin(rad_df.index)
             else:
-                st.error(message)
-                st.stop()
-    else:
-        st.info("📂 Please provide a valid data path.")
-        st.stop()
+                mask &= df["City"] == filters["city"]
+        else:
+            mask &= df["City"] == filters["city"]
+            
+    if target != "Company" and filters.get("comp") not in ["All", "Tous"]:
+        mask &= df["Display_Company"] == filters["comp"]
+    if target != "Facility" and filters.get("fac") not in ["All", "Tous"]:
+        mask &= df["Facility"] == filters["fac"]
+    if target != "Pollutant" and filters.get("pol") not in ["All", "Tous"]:
+        mask &= df[f"Substance_{st.session_state.lang}"] == filters["pol"]
+        
+    col_map = {
+        "Province": "Province",
+        "City": "City",
+        "Company": "Display_Company",
+        "Facility": "Facility",
+        "Pollutant": f"Substance_{st.session_state.lang}"
+    }
+    
+    # Return unique valid options + the "All" default
+    opts = df[mask][col_map[target]].dropna().unique().tolist()
+    return ["All" if st.session_state.lang == "EN" else "Tous"] + sorted(opts)
 
-raw_df = st.session_state.raw_df_loaded
+def get_final_selection(df):
+    """Processes the final filtered DataFrame based on the current UI state."""
+    lang = st.session_state.lang
+    default_all = "All" if lang == "EN" else "Tous"
+    f_df = df.copy()
+    
+    # Core Masking
+    if st.session_state.get("f_mining"):
+        f_df = f_df[f_df["NAICS_Code"].astype(str).str.startswith(("21", "331"))]
+    if st.session_state.get("f_prov", default_all) != default_all:
+        f_df = f_df[f_df["Province"] == st.session_state.f_prov]
+        
+    # City & Radius Math
+    target_city = st.session_state.get("f_city", default_all)
+    if target_city != default_all:
+        rad = float(st.session_state.get("f_rad", 0.0))
+        if rad > 0:
+            c_row = df[df["City"] == target_city].dropna(subset=["Lat", "Lon"])
+            if not c_row.empty:
+                f_df = filter_by_radius(f_df, float(c_row.iloc[0].Lat), float(c_row.iloc[0].Lon), rad)
+        else:
+            f_df = f_df[f_df["City"] == target_city]
+            
+    # Granular Focus
+    if st.session_state.get("f_comp", default_all) != default_all:
+        f_df = f_df[f_df["Display_Company"] == st.session_state.f_comp]
+    if st.session_state.get("f_fac", default_all) != default_all:
+        f_df = f_df[f_df["Facility"] == st.session_state.f_fac]
+        
+    target_pol = st.session_state.get("f_pol", default_all)
+    if target_pol != default_all:
+        sub_col = f"Substance_{lang}"
+        f_df = f_df[f_df[sub_col] == target_pol]
+        
+    years = st.session_state.get("f_years", (int(df["Year"].min()), int(df["Year"].max())))
+    f_df = f_df[f_df["Year"].between(years[0], years[1])]
+    
+    # Construct UI Label
+    parts = []
+    if target_city != default_all:
+        rad = float(st.session_state.get("f_rad", 0.0))
+        parts.append(f"{target_city} (+{rad}km)" if rad > 0 else target_city)
+    if st.session_state.get("f_comp", default_all) != default_all: parts.append(st.session_state.f_comp)
+    if st.session_state.get("f_fac", default_all) != default_all: parts.append(st.session_state.f_fac)
+    if not parts: parts.append("Canada")
+    if target_pol != default_all: parts.append(target_pol)
+    parts.append(f"{years[0]}-{years[1]}")
+    
+    ctx = {
+        "name": target_city if target_city != default_all else "All",
+        "pollutant": target_pol if target_pol != default_all else "All"
+    }
+    
+    return f_df, " | ".join(parts), ctx
 
-# --- 4. SELECTION BUILDER FRAGMENT ---
 @st.fragment
 def selection_sidebar_fragment(raw_df):
-    # Re-declare constants inside fragment scope
+    """Renders the real-time cross-filtering sidebar."""
     lang = st.session_state.lang
-    l_sub_col = "Substance_EN" if lang == "EN" else "Substance_FR"
+    default_all = "All" if lang == "EN" else "Tous"
     
-    subs_list = sorted(raw_df[l_sub_col].dropna().unique())
+    st.header("🎯 Selection Builder" if lang == "EN" else "🎯 Créateur de sélection")
+    
+    # 1. Reset Filters Button
+    if st.button("🔄 Reset Filters" if lang == "EN" else "🔄 Réinitialiser les filtres", use_container_width=True):
+        for k in ["f_mining", "f_prov", "f_city", "f_comp", "f_fac", "f_pol", "f_rad"]:
+            if k in st.session_state:
+                del st.session_state[k]
+        st.rerun(scope="fragment")
+
+    st.divider()
+    
+    # 2. Capture Current Filter State safely
+    filters = {
+        "mining": st.session_state.get("f_mining", False),
+        "prov": st.session_state.get("f_prov", default_all),
+        "city": st.session_state.get("f_city", default_all),
+        "rad": float(st.session_state.get("f_rad", 0.0)),
+        "comp": st.session_state.get("f_comp", default_all),
+        "fac": st.session_state.get("f_fac", default_all),
+        "pol": st.session_state.get("f_pol", default_all)
+    }
+
+    # Mining Checkbox
+    st.checkbox("⛏️ Mining/Smelting Only" if lang == "EN" else "⛏️ Exploitation minière uniquement", key="f_mining")
+    filters["mining"] = st.session_state.get("f_mining", False) # Instant update for options
+
+    # 3. Calculate dynamic options for each dropdown
+    with st.spinner("Syncing cross-filters..." if lang == "EN" else "Synchronisation des filtres..."):
+        prov_opts = get_filtered_options(raw_df, filters, "Province")
+        city_opts = get_filtered_options(raw_df, filters, "City")
+        comp_opts = get_filtered_options(raw_df, filters, "Company")
+        fac_opts  = get_filtered_options(raw_df, filters, "Facility")
+        pol_opts  = get_filtered_options(raw_df, filters, "Pollutant")
+
+    def safe_idx(opts, val):
+        return opts.index(val) if val in opts else 0
+
+    # 4. Render Auto-Updating Selectboxes
+    st.selectbox("Province", prov_opts, index=safe_idx(prov_opts, filters["prov"]), key="f_prov")
+    st.selectbox("City / Ville", city_opts, index=safe_idx(city_opts, filters["city"]), key="f_city")
+    
+    if st.session_state.get("f_city", default_all) != default_all:
+        st.slider("Radius / Rayon (km)", 0.0, 500.0, float(st.session_state.get("f_rad", 0.0)), step=10.0, key="f_rad")
+        
+    st.selectbox("Company / Entreprise", comp_opts, index=safe_idx(comp_opts, filters["comp"]), key="f_comp")
+    st.selectbox("Facility / Installation", fac_opts, index=safe_idx(fac_opts, filters["fac"]), key="f_fac")
+    
+    st.divider()
+    
+    st.selectbox("Pollutant / Polluant", pol_opts, index=safe_idx(pol_opts, filters["pol"]), key="f_pol")
+    
     min_y, max_y = int(raw_df["Year"].min()), int(raw_df["Year"].max())
+    st.slider("Years / Années", min_y, max_y, st.session_state.get("f_years", (min_y, max_y)), key="f_years")
 
-    t_sb = "🎯 Selection Builder" if lang == "EN" else "🎯 Constructeur de sélection"
-    t_mining = "Mining/Smelting Only" if lang == "EN" else "Mines/Fonderies uniquement"
-    t_city = "City Focus" if lang == "EN" else "Ville focus"
-    t_radius = "Radius (km)" if lang == "EN" else "Rayon (km)"
-    t_comp = "Company" if lang == "EN" else "Entreprise"
-    t_fac = "Facility" if lang == "EN" else "Installation"
-    t_poll = "Pollutant Focus" if lang == "EN" else "Substance d'intérêt"
-    t_years = "Years Selection" if lang == "EN" else "Sélection des années"
-    all_label = "All" if lang == "EN" else "Tous"
-
-    with st.expander(t_sb, expanded=True):
-        # Use cascading_df if filtered, otherwise use raw_df
-        display_df = st.session_state.cascading_df if st.session_state.cascading_df is not None else raw_df
-        
-        mining_only = st.checkbox(t_mining)
-        sel_p = st.selectbox("Province", [all_label] + sorted(raw_df["Province"].dropna().unique()))
-        sel_c = st.selectbox(t_city, [all_label] + sorted(raw_df["City"].dropna().unique()))
-        rad_km = st.slider(t_radius, 0, 500, 0)
-        
-        sel_comp = st.selectbox(t_comp, [all_label] + sorted(display_df["Display_Company"].dropna().unique()))
-        sel_f = st.selectbox(t_fac, [all_label] + sorted(display_df["Facility"].dropna().unique()))
-
-        if st.button(T_SYNC, use_container_width=True, type="primary"):
-            t_df = raw_df.copy()
-            if mining_only: 
-                t_df = t_df[t_df["NAICS_Code"].astype(str).str.startswith(("21", "331"))]
-            if sel_p not in ["All", "Tous"]: 
-                t_df = t_df[t_df["Province"] == sel_p]
-            if sel_c not in ["All", "Tous"]:
-                c_row = raw_df[raw_df["City"] == sel_c].dropna(subset=["Lat", "Lon"])
-                if not c_row.empty:
-                    if rad_km > 0: 
-                        t_df = filter_by_radius(t_df, float(c_row.iloc[0].Lat), float(c_row.iloc[0].Lon), rad_km)
-                    else: 
-                        t_df = t_df[t_df["City"] == sel_c]
-            
-            if sel_comp not in ["All", "Tous"]: 
-                t_df = t_df[t_df["Display_Company"] == sel_comp]
-            if sel_f not in ["All", "Tous"]: 
-                t_df = t_df[t_df["Facility"] == sel_f]
-            
-            st.session_state.cascading_df = t_df
-            st.rerun(scope="fragment")
-
-        sel_s = st.selectbox(t_poll, [all_label] + subs_list)
-        sel_range = st.slider(t_years, min_y, max_y, (min_y, max_y))
-
-        st.divider()
-
-        # INTERNAL HELPER: Apply filtering logic for buttons
-        def get_final_selection():
-            f_df = raw_df.copy()
-            filter_desc = []
-            if mining_only: 
-                f_df = f_df[f_df["NAICS_Code"].astype(str).str.startswith(("21", "331"))]
-                filter_desc.append("Mining" if lang == "EN" else "Mines")
-            if sel_p not in ["All", "Tous"]: 
-                f_df = f_df[f_df["Province"] == sel_p]
-                filter_desc.append(sel_p)
-            if sel_c not in ["All", "Tous"]:
-                c_row = raw_df[raw_df["City"] == sel_c].dropna(subset=["Lat", "Lon"])
-                if not c_row.empty:
-                    if rad_km > 0: 
-                        f_df = filter_by_radius(f_df, float(c_row.iloc[0].Lat), float(c_row.iloc[0].Lon), rad_km)
-                        filter_desc.append(f"{sel_c} (+{rad_km}km)")
-                    else: 
-                        f_df = f_df[f_df["City"] == sel_c]
-                        filter_desc.append(sel_c)
-            
-            if sel_comp not in ["All", "Tous"]: 
-                f_df = f_df[f_df["Display_Company"] == sel_comp]
-                filter_desc.append(sel_comp)
-            if sel_f not in ["All", "Tous"]: 
-                f_df = f_df[f_df["Facility"] == sel_f]
-                filter_desc.append(sel_f)
-            if sel_s not in ["All", "Tous"]: 
-                f_df = f_df[f_df[l_sub_col] == sel_s]
-                filter_desc.append(sel_s)
-            
-            filter_desc.append(f"{sel_range[0]}-{sel_range[1]}")
-            label = " | ".join(filter_desc) if filter_desc else ("Full Dataset" if lang == "EN" else "Données complètes")
-            
-            final_df = f_df[(f_df["Year"] >= sel_range[0]) & (f_df["Year"] <= sel_range[1])]
-            return final_df, label
-
-        # BUTTON LOGIC
-        c1, c2 = st.columns(2)
-        if c1.button(T_INC, use_container_width=True): 
-            curr_df, label = get_final_selection()
+    st.divider()
+    
+    # 5. Workspace Actions
+    c1, c2 = st.columns(2)
+    if c1.button("➕ Include", use_container_width=True, type="primary"):
+        f_df, lbl, ctx = get_final_selection(raw_df)
+        if not f_df.empty:
             st.session_state.active_selections.append({
-                "type": "Include", 
-                "label": label, 
-                "ids": set(curr_df["_uid"].tolist()),
-                "filter_context": {
-                    "name": sel_c, "prov": sel_p, "radius": rad_km, 
-                    "comp": sel_comp, "fac": sel_f, "pollutant": sel_s, "lang": lang
-                }
+                "type": "Include",
+                "label": lbl,
+                "ids": set(f_df["_uid"].tolist()),
+                "filter_context": ctx
             })
-            st.rerun() # Full rerun to update main dashboard
-
-        if c2.button(T_EXC, use_container_width=True): 
-            curr_df, label = get_final_selection()
+            st.rerun() 
+        else:
+            st.error("No data found." if lang == "EN" else "Aucune donnée trouvée.")
+            
+    if c2.button("➖ Exclude", use_container_width=True):
+        f_df, lbl, ctx = get_final_selection(raw_df)
+        if not f_df.empty:
             st.session_state.active_selections.append({
-                "type": "Exclude", 
-                "label": label, 
-                "ids": set(curr_df["_uid"].tolist()),
-                "filter_context": {
-                    "name": sel_c, "prov": sel_p, "radius": rad_km, 
-                    "comp": sel_comp, "fac": sel_f, "pollutant": sel_s, "lang": lang
-                }
+                "type": "Exclude",
+                "label": f"EXCLUDE: {lbl}",
+                "ids": set(f_df["_uid"].tolist()),
+                "filter_context": ctx
             })
             st.rerun()
+        else:
+            st.error("No data found." if lang == "EN" else "Aucune donnée trouvée.")
 
-# --- 5. EXECUTION ---
-if raw_df is not None:
+# --- MAIN APP EXECUTION ---
+def main():
+    # Setup Sidebar Global Components
     with st.sidebar:
-        # 1. Fragmented Selection Builder
-        selection_sidebar_fragment(raw_df)
+        st.title("🌲 NPRI Explorer")
         
-        # 2. Workspace Manager (Now run as a sibling)
+        # Bilingual Toggle
+        new_lang = st.radio("Language / Langue", ["EN", "FR"], horizontal=True, label_visibility="collapsed")
+        if new_lang != st.session_state.lang:
+            st.session_state.lang = new_lang
+            st.rerun()
+
+        # Placeholder to show loading state in sidebar while data processes
+        sidebar_placeholder = st.empty()
+        sidebar_placeholder.info("⏳ Preparing workspace..." if st.session_state.lang == "EN" else "⏳ Préparation de l'espace...")
+
+    # Render Main View Headers immediately so the app looks anchored while loading
+    st.title("National Pollutant Release Inventory" if st.session_state.lang == "EN" else "Inventaire national des rejets de polluants")
+
+    # Data Pipeline with a highly visible status component
+    loading_msg = "🌍 Loading NPRI Datasets..." if st.session_state.lang == "EN" else "🌍 Chargement des données de l'INRP..."
+    success_msg = "✅ Datasets Synced!" if st.session_state.lang == "EN" else "✅ Données synchronisées !"
+    
+    with st.status(loading_msg, expanded=True) as status:
+        st.write("Processing files from `./data`. This may take a moment if the cache is empty..." if st.session_state.lang == "EN" else "Traitement des fichiers depuis `./data`. Cela peut prendre un moment si le cache est vide...")
+        
+        raw_df, load_msg = process_files("./data")
+        
+        if raw_df is not None:
+            status.update(label=success_msg, state="complete", expanded=False)
+        else:
+            status.update(label="❌ Data Error" if st.session_state.lang == "EN" else "❌ Erreur de données", state="error", expanded=True)
+            
+    if raw_df is None:
+        st.error(load_msg)
+        return
+
+    # Clear the sidebar placeholder now that data is ready
+    sidebar_placeholder.empty()
+
+    # Continue rendering the rest of the sidebar now that data is loaded
+    with st.sidebar:
+        # Workspace Utilities
         workspace_manager_ui()
         
-        # 3. Kiosk Config (Now run as a sibling)
-        l_sub_col = "Substance_EN" if st.session_state.lang == "EN" else "Substance_FR"
-        subs_list = sorted(raw_df[l_sub_col].dropna().unique())
-        min_y, max_y = int(raw_df["Year"].min()), int(raw_df["Year"].max())
-        kiosk_config_ui(raw_df, subs_list, min_y, max_y, {})
+        # Render Selection Builder logic inside Sidebar
+        selection_sidebar_fragment(raw_df)
 
-    # Calculate final masked dataframe
+    # Compile Workspace Data Layers
     workspace_ids = set()
     for sel in st.session_state.active_selections:
         if sel["type"] == "Include": 
@@ -216,8 +271,17 @@ if raw_df is not None:
     w_df = raw_df[raw_df["_uid"].isin(workspace_ids)].copy()
     
     if not w_df.empty:
-        # Centralized Normalization (Unit scaling)
         w_df = normalize_quantity(w_df)
-        render_main_dashboard(w_df)
-    else:
-        st.info("💡 Workspace Empty. Add layers to visualize." if lang == "EN" else "💡 Espace de travail vide. Ajoutez des couches.")
+        
+    # Render Dashboard Panel
+    render_main_dashboard(w_df)
+    
+    st.divider()
+    
+    # Render Kiosk Generation Tools
+    subs_list = raw_df[f"Substance_{st.session_state.lang}"].dropna().unique().tolist()
+    min_y, max_y = int(raw_df["Year"].min()), int(raw_df["Year"].max())
+    kiosk_config_ui(raw_df, subs_list, min_y, max_y, {})
+
+if __name__ == "__main__":
+    main()

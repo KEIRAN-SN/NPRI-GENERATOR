@@ -109,7 +109,8 @@ def process_files(path):
                 c_sub_en = get_col(["Substance Name (English)", "Substance_Name_en"])
                 c_sub_fr = get_col(["Substance Name (French)", "Substance_Name_fr"])
                 c_qty = get_col(["Quantity", "Total_Quantity", "Value"])
-                c_units = get_col(["Unit", "Units", "UNIT"]) # Added Units mapping
+                c_units = get_col(["Unit", "Units", "UNIT"])
+                c_naics = get_col(["NAICS", "Code", "naics"]) # NAICS Mapping
                 
                 if c_year: col_map[c_year] = "Year"
                 if c_id: col_map[c_id] = "NPRI_ID"
@@ -120,6 +121,7 @@ def process_files(path):
                 if c_sub_fr: col_map[c_sub_fr] = "Substance_FR"
                 if c_qty: col_map[c_qty] = "Quantity"
                 if c_units: col_map[c_units] = "Units"
+                if c_naics: col_map[c_naics] = "NAICS_Code" # NAICS Mapping assignment
 
                 if col_map:
                     tmp = pd.read_csv(f, encoding="latin1", usecols=list(col_map.keys()))
@@ -156,10 +158,12 @@ def process_files(path):
     else:
         df["Display_Company"] = df["Company"] if "Company" in df.columns else "Unknown"
 
+    # Failsafes to guarantee columns exist before saving
     df["Display_Company"] = df["Display_Company"].fillna("Unknown")
     df["Substance_EN"] = df.get("Substance_EN", pd.Series(["Unknown"]*len(df))).fillna("Unknown")
     df["Substance_FR"] = df.get("Substance_FR", pd.Series(["Unknown"]*len(df))).fillna("Unknown")
     df["Units"] = df.get("Units", pd.Series(["tonnes"]*len(df))).fillna("tonnes") # Default to tonnes
+    df["NAICS_Code"] = df.get("NAICS_Code", pd.Series(["0"]*len(df))).fillna("0") # Guarantee NAICS_Code exists
     df["_uid"] = df.index.astype(str)
 
     try:
