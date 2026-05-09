@@ -109,17 +109,22 @@ def run_render():
     rendered_content = template.render(**data)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        # POINT TO THE SYSTEM CHROMIUM ON YOUR RPI
+        browser = p.chromium.launch(
+            executable_path='/usr/bin/chromium-browser',
+            headless=True,
+	    args=['--no-sandbox', '--disable-setuid-sandbox']
+        )
+        
         page = browser.new_page(viewport={'width': 1600, 'height': 1000})
         page.set_content(rendered_content)
         
-        # Wait for tiles to load and fitBounds to finish animating
-        page.wait_for_timeout(4000) 
+        # Increased timeout slightly for RPi performance
+        page.wait_for_timeout(5000) 
         
         element = page.query_selector("#capture-wrapper")
         if element:
             element.screenshot(path="temp_report.jpg", type='jpeg', quality=95)
         browser.close()
-
 if __name__ == "__main__":
     run_render()
