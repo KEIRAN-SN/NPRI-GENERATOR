@@ -3,8 +3,34 @@ import pandas as pd
 import json
 import os
 import time
+import io
+import zipfile
 
 # --- UTILITY FUNCTIONS ---
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def create_data_zip(folder_path="./data"):
+    """Creates a ZIP archive of all raw files in the data folder, excluding the cache."""
+    zip_buffer = io.BytesIO()
+    has_files = False
+    
+    if os.path.exists(folder_path):
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for root, _, files in os.walk(folder_path):
+                for file in files:
+                    # Skip the large generated cache file to save bandwidth
+                    if file.endswith(".parquet"):
+                        continue
+                    
+                    file_path = os.path.join(root, file)
+                    zip_file.write(file_path, os.path.relpath(file_path, folder_path))
+                    has_files = True
+                    
+    if not has_files:
+        return None
+        
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()
 
 def serialize_workspace():
     """Converts session state into a JSON-ready string, ensuring widget keys are synced."""
@@ -118,7 +144,7 @@ def workspace_manager_ui():
         # 2. FILE IMPORT/EXPORT
         col_ex, col_im = st.columns(2)
         ws_json = serialize_workspace()
-        col_ex.download_button("📥 Export .json", ws_json, "npri_workspace.json", "application/json", use_container_width=True)
+        col_ex.download_button("📥 Export Config (.json)", ws_json, "npri_workspace.json", "application/json", use_container_width=True)
         
         uploaded_ws = col_im.file_uploader("Upload Config", type="json", label_visibility="collapsed", key="ws_uploader")
         if uploaded_ws is not None:
@@ -131,8 +157,62 @@ def workspace_manager_ui():
                 st.rerun()
 
         st.divider()
+        
+        # 3. SERVER CONTROLS
+        st.markdown("**⚙️ Server Controls**" if lang == "EN" else "**⚙️ Contrôles du serveur**")
+        
+        # Upload Datasets
+        uploaded_data_files = st.file_uploader(
+            "Upload NPRI Datasets (.csv)" if lang == "EN" else "Téléverser des jeux de données INRP (.csv)", 
+            type="csv", 
+            accept_multiple_files=True, 
+            key="server_data_uploader"
+        )
+        if uploaded_data_files:
+            if st.button("💾 Save Uploaded Datasets" if lang == "EN" else "💾 Enregistrer les jeux de données", use_container_width=True, type="primary"):
+                os.makedirs("./data", exist_ok=True)
+                for f in uploaded_data_files:
+                    with open(os.path.join("./data", f.name), "wb") as out_f:
+                        out_f.write(f.getbuffer())
+                
+                # Force app.py to reload and rebuild cache with the new data
+                st.session_state.raw_df_loaded = None 
+                st.success(f"Saved {len(uploaded_data_files)} files. Reloading data..." if lang == "EN" else f"{len(uploaded_data_files)} fichiers enregistrés. Rechargement...")
+                time.sleep(1)
+                st.rerun()
 
-        # 3. ACTIVE LAYER LIST (With Restored Previews)
+        # Download ZIP and Clear Cache row
+        c_ctrl1, c_ctrl2 = st.columns(2)
+        
+        zip_bytes = create_data_zip("./data")
+        if zip_bytes:
+            c_ctrl1.download_button(
+                label="📥 Download ./data (ZIP)" if lang == "EN" else "📥 Télécharger ./data (ZIP)",
+                data=zip_bytes,
+                file_name="NPRI_Server_Data.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+        else:
+            c_ctrl1.button("📥 Download ./data" if lang == "EN" else "📥 Télécharger ./data", disabled=True, use_container_width=True)
+
+        if c_ctrl2.button("🗑️ Clear Parquet Cache" if lang == "EN" else "🗑️ Vider le cache Parquet", use_container_width=True):
+            cache_path = "./data/processed_cache.parquet"
+            if os.path.exists(cache_path):
+                try:
+                    os.remove(cache_path)
+                    st.session_state.raw_df_loaded = None # Force a full data reload
+                    st.toast("✅ Cache cleared! Rebuilding on next load." if lang == "EN" else "✅ Cache vidé ! Reconstruction au prochain chargement.")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error clearing cache: {e}")
+            else:
+                st.toast("No cache file found." if lang == "EN" else "Aucun fichier cache trouvé.")
+
+        st.divider()
+
+        # 4. ACTIVE LAYER LIST (With Restored Previews)
         st.subheader(t_layers)
         if not st.session_state.active_selections:
             st.info("No filters applied yet." if lang == "EN" else "Aucun filtre appliqué.")

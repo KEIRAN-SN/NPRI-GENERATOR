@@ -135,11 +135,24 @@ def process_files(path):
     if geo_df is not None: 
         df = pd.merge(df, geo_df, on="NPRI_ID", how="left")
     
-    # Create Display Company Name
-    if "Year" in df.columns and "Company" in df.columns:
-        latest_names = df.sort_values("Year", ascending=False).drop_duplicates("NPRI_ID")
-        id_to_latest_name = dict(zip(latest_names["NPRI_ID"], latest_names["Company"]))
-        df["Display_Company"] = df["NPRI_ID"].map(id_to_latest_name)
+    # Create Display Company Name securely using try-except and numeric forcing
+    if not df.empty and "Year" in df.columns and "Company" in df.columns:
+        try:
+            # Force "Year" to be numeric, turning broken string entries into NaNs
+            df["Year"] = pd.to_numeric(df["Year"], errors="coerce")
+            
+            # Drop empty years and companies before attempting any sorts
+            valid_years = df.dropna(subset=["Year", "Company", "NPRI_ID"])
+            
+            if len(valid_years) > 0:
+                latest_names = valid_years.sort_values("Year", ascending=False).drop_duplicates("NPRI_ID")
+                id_to_latest_name = dict(zip(latest_names["NPRI_ID"], latest_names["Company"]))
+                df["Display_Company"] = df["NPRI_ID"].map(id_to_latest_name).fillna(df["Company"])
+            else:
+                df["Display_Company"] = df["Company"]
+        except Exception:
+            # Ultimate failsafe: If sorting fails, just use the raw company names
+            df["Display_Company"] = df["Company"]
     else:
         df["Display_Company"] = df["Company"] if "Company" in df.columns else "Unknown"
 
