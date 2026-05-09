@@ -1,1 +1,1 @@
-pyinstaller --onefile --windowed --icon=smoke.ico --name="NPRI Viewer"  main.py
+pyinstaller --onefile --windowed --icon=smoke.ico --name="NPRI Viewer" --distpath="../" main.py
