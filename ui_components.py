@@ -8,6 +8,23 @@ import zipfile
 
 # --- UTILITY FUNCTIONS ---
 
+RFID_DB_FILE = "./rfid_database.json"
+
+def load_rfid_data():
+    if os.path.exists(RFID_DB_FILE):
+        with open(RFID_DB_FILE, "r") as f:
+            return json.load(f)
+    # Default structure mapping to 10 slots (l1-l10, t1-t10, p1-p10) for full hardware compatibility
+    return {
+        "locations": {f"l{i}": {"name": f"L{i}", "tag": "", "note": ""} for i in range(1, 11)},
+        "timeframes": {f"t{i}": {"name": f"T{i}", "tag": "", "note": ""} for i in range(1, 11)},
+        "pollutants": {f"p{i}": {"name": f"P{i}", "tag": "", "note": ""} for i in range(1, 11)}
+    }
+
+def save_rfid_data(data):
+    with open(RFID_DB_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
 @st.cache_data(show_spinner=False, ttl=3600)
 def create_data_zip(folder_path="./data"):
     """Creates a ZIP archive of all raw files in the data folder, excluding the cache."""
@@ -175,8 +192,6 @@ def workspace_manager_ui():
                     with open(os.path.join("./data", f.name), "wb") as out_f:
                         out_f.write(f.getbuffer())
                 
-                # Force app.py to reload and rebuild cache with the new data
-                st.session_state.raw_df_loaded = None 
                 st.success(f"Saved {len(uploaded_data_files)} files. Reloading data..." if lang == "EN" else f"{len(uploaded_data_files)} fichiers enregistrés. Rechargement...")
                 time.sleep(1)
                 st.rerun()
@@ -201,7 +216,6 @@ def workspace_manager_ui():
             if os.path.exists(cache_path):
                 try:
                     os.remove(cache_path)
-                    st.session_state.raw_df_loaded = None # Force a full data reload
                     st.toast("✅ Cache cleared! Rebuilding on next load." if lang == "EN" else "✅ Cache vidé ! Reconstruction au prochain chargement.")
                     time.sleep(1)
                     st.rerun()
@@ -212,7 +226,7 @@ def workspace_manager_ui():
 
         st.divider()
 
-        # 4. ACTIVE LAYER LIST (With Restored Previews)
+        # 4. ACTIVE LAYER LIST
         st.subheader(t_layers)
         if not st.session_state.active_selections:
             st.info("No filters applied yet." if lang == "EN" else "Aucun filtre appliqué.")
@@ -235,30 +249,91 @@ def workspace_manager_ui():
                         st.session_state.active_selections.pop(real_idx)
                         st.rerun()
 
+@st.fragment
+def rfid_hardware_mapper_ui():
+    """Renders the UI for mapping physical RFID tags to the 10 available slots."""
+    lang = st.session_state.get("lang", "EN")
+    title = "💳 RFID Hardware Mapper" if lang == "EN" else "💳 Mappeur de matériel RFID"
+    
+    with st.expander(title, expanded=False):
+        rfid_data = load_rfid_data()
+        col1, col2 = st.columns([0.4, 0.6])
+
+        with col1:
+            st.subheader("Edit Mapping" if lang == "EN" else "Modifier le mappage")
+            
+            # Bilingual Category mapping updated for 10 slots
+            cat_map = {
+                "Locations (L1-L10)": "locations", 
+                "Timeframes (T1-T10)": "timeframes", 
+                "Pollutants (P1-P10)": "pollutants"
+            } if lang == "EN" else {
+                "Lieux (L1-L10)": "locations", 
+                "Périodes (T1-T10)": "timeframes", 
+                "Polluants (P1-P10)": "pollutants"
+            }
+            
+            display_cat = st.selectbox("Category" if lang == "EN" else "Catégorie", list(cat_map.keys()), key="rfid_cat")
+            category = cat_map[display_cat]
+            
+            slot_keys = list(rfid_data[category].keys())
+            selected_slot = st.selectbox("Slot" if lang == "EN" else "Emplacement", slot_keys, format_func=lambda x: rfid_data[category][x]["name"], key="rfid_slot_selector")
+
+            current_val = rfid_data[category][selected_slot]
+            new_tag = st.text_input("RFID Tag ID" if lang == "EN" else "ID de l'étiquette RFID", value=current_val["tag"], key="rfid_tag_input")
+            new_note = st.text_area("Notes", value=current_val["note"], key="rfid_note_input")
+
+            if st.button("💾 Update Mapping" if lang == "EN" else "💾 Mettre à jour", type="primary", use_container_width=True):
+                rfid_data[category][selected_slot]["tag"] = new_tag
+                rfid_data[category][selected_slot]["note"] = new_note
+                save_rfid_data(rfid_data)
+                st.success(f"Linked '{new_tag}' to slot {selected_slot.upper()}!" if lang == "EN" else f"'{new_tag}' lié à {selected_slot.upper()}!")
+                st.rerun(scope="fragment") 
+
+        with col2:
+            st.subheader("Current Registry" if lang == "EN" else "Registre actuel")
+            flattened = []
+            for cat, slots in rfid_data.items():
+                for s_id, info in slots.items():
+                    flattened.append({
+                        "Category": cat.capitalize(),
+                        "Slot": info["name"],
+                        "RFID_Tag": info["tag"],
+                        "Note": info["note"]
+                    })
+            df_rfid = pd.DataFrame(flattened)
+            st.dataframe(df_rfid, use_container_width=True, height=350)
+            
+            st.divider()
+            # Server-side Export Action
+            if st.button("🚀 Export Config to Server (`./kiosk_app/config.json`)" if lang == "EN" else "🚀 Exporter config au serveur", type="primary", use_container_width=True):
+                try:
+                    kiosk_app_dir = "./kiosk_app"
+                    os.makedirs(kiosk_app_dir, exist_ok=True)
+                    export_path = os.path.join(kiosk_app_dir, "config.json")
+                    
+                    with open(export_path, "w") as f:
+                        json.dump(rfid_data, f, indent=4)
+                        
+                    st.success(f"Successfully exported JSON to `{export_path}`!" if lang == "EN" else f"JSON exporté avec succès vers `{export_path}` !")
+                except Exception as e:
+                    st.error(f"Error exporting file: {e}")
+
 def sync_p_label(idx):
     """Updates the pollutant label field when the source substance is changed."""
     st.session_state[f"p_lab_{idx}"] = st.session_state[f"p_sel_{idx}"]
 
 def auto_fill_time_cycles_callback(min_y, max_y):
-    """Calculates and updates time cycle sliders evenly (run as a callback to avoid Streamlit API Exception)."""
+    """Calculates and updates time cycle sliders evenly."""
     span = max_y - min_y + 1
     step = span / 6.0
     
     for i in range(6):
         start_yr = min_y + int(round(i * step))
         end_yr = min_y + int(round((i + 1) * step)) - 1
-        
-        # Ensure start and end don't overlap wrongly
         end_yr = max(start_yr, end_yr)
-        
-        # Make sure the last block extends perfectly to the maximum year
-        if i == 5:
-            end_yr = max_y
-        
+        if i == 5: end_yr = max_y
         st.session_state[f"t_slider_{i+1}"] = (start_yr, end_yr)
-        # We don't need to manually sync to kiosk_times here because the sliders 
-        # reading these new values will handle the sync dynamically when they render.
-
 
 @st.fragment
 def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
@@ -275,9 +350,9 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
         if p_key not in st.session_state.kiosk_pols:
             st.session_state.kiosk_pols[p_key] = {"data_name": "", "display_name": ""}
 
-    with st.expander("📟 RFID Kiosk Configuration", expanded=False):
+    with st.expander("📟 RFID Kiosk Data Configuration" if lang == "EN" else "📟 Configuration des données du kiosque", expanded=False):
         slots = [f"L{i}" for i in range(1, 7)]
-        cols = st.columns(3) # 3-column layout for detailed slot view
+        cols = st.columns(3) 
         
         for i, s_id in enumerate(slots):
             with cols[i % 3].container(border=True):
@@ -293,24 +368,19 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
                         st.caption(f"📍 {ctx_str}")
                     st.caption(f"📊 {mask_len} records")
                     
-                    # Split Action Buttons across the bottom of the card
                     act_c1, act_c2 = st.columns(2)
-                    
-                    # Edit / Reload into workspace button
                     if act_c1.button("✏️", key=f"edit_{s_id}", help=f"Edit {s_id}", use_container_width=True):
                         if "source_layers" in loc:
-                            # Restore layers back to active_selections
                             st.session_state.active_selections = []
                             for layer in loc["source_layers"]:
                                 restored = layer.copy()
                                 restored["ids"] = set(restored["ids"])
                                 st.session_state.active_selections.append(restored)
                             st.toast(f"Loaded {s_id} back into Workspace!")
-                            st.rerun() # Full rerun to update workspace manager UI
+                            st.rerun() 
                         else:
                             st.toast("No source data available for this slot.")
 
-                    # Delete button
                     if act_c2.button("🗑️", key=f"clr_{s_id}", help=f"Clear {s_id}", use_container_width=True):
                         del st.session_state.kiosk_locs[s_id]
                         st.rerun(scope="fragment")
@@ -319,23 +389,21 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
                     st.markdown(f"**{s_id}** ❌")
                     st.markdown("**Empty**")
                     st.caption("No data assigned")
-                    st.caption("&nbsp;") # Spacing to somewhat match height
-                    st.caption("&nbsp;")
+                    st.caption("&nbsp;\n&nbsp;") 
 
         if st.button("⚡ Bulk Fill Slots from Workspace", use_container_width=True, type="primary"):
             with st.spinner("Mapping..."):
                 active_layers = [s for s in st.session_state.active_selections if s["type"] == "Include"]
                 for i, layer in enumerate(active_layers[:6]):
                     s_id = f"L{i+1}"
-                    # Prepare serializable layer
                     s_layer = layer.copy()
                     s_layer["ids"] = list(s_layer["ids"])
 
                     st.session_state.kiosk_locs[s_id] = {
                         "display_label": layer["label"].split("|")[0].strip(),
-                        "full_context": layer["label"], # Saved full context for UI display
+                        "full_context": layer["label"], 
                         "workspace_mask": list(layer["ids"]),
-                        "source_layers": [s_layer], # Store original layer for editing
+                        "source_layers": [s_layer], 
                         "is_aggregate": True
                     }
                 time.sleep(0.2)
@@ -345,9 +413,9 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
 
         # Slot Assignment
         c1, c2 = st.columns([0.3, 0.7])
-        l_slot = c1.selectbox("Slot", slots)
+        l_slot = c1.selectbox("Slot", slots, key="kiosk_slot_assignment")
         existing = st.session_state.kiosk_locs.get(l_slot, {})
-        k_label = c2.text_input("Display Label", value=existing.get("display_label", ""))
+        k_label = c2.text_input("Display Label", value=existing.get("display_label", ""), key="kiosk_label_assignment")
 
         if st.button(f"Assign Workspace to {l_slot}", use_container_width=True):
             w_ids = set()
@@ -355,7 +423,6 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
             saved_layers = []
             
             for s in st.session_state.active_selections:
-                # Store serializable version of the layer for future editing
                 s_copy = s.copy()
                 s_copy["ids"] = list(s_copy["ids"])
                 saved_layers.append(s_copy)
@@ -370,9 +437,9 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
             
             st.session_state.kiosk_locs[l_slot] = {
                 "display_label": k_label if k_label else "Custom Region",
-                "full_context": ctx_str, # Saved context for UI display
+                "full_context": ctx_str, 
                 "workspace_mask": list(w_ids),
-                "source_layers": saved_layers, # Store original layers for editing
+                "source_layers": saved_layers, 
                 "is_aggregate": True
             }
             st.toast(f"Slot {l_slot} Assigned!")
@@ -388,7 +455,6 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
         for i in range(1, 7):
             p_id = f"P{i}"
             
-            # Initialization Check for Pollutants
             if f"p_sel_{i}" not in st.session_state:
                 st.session_state[f"p_sel_{i}"] = st.session_state.kiosk_pols[p_id]["data_name"]
             if f"p_lab_{i}" not in st.session_state:
@@ -396,18 +462,9 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
 
             with p_cols[0 if i <= 3 else 1]:
                 st.markdown(f"**Pollutant {i}**")
-                
-                st.selectbox(
-                    f"Source ({p_id})", 
-                    clean_subs, 
-                    key=f"p_sel_{i}",
-                    on_change=sync_p_label,
-                    args=(i,)
-                )
-                
+                st.selectbox(f"Source ({p_id})", clean_subs, key=f"p_sel_{i}", on_change=sync_p_label, args=(i,))
                 st.text_input(f"Label ({p_id})", key=f"p_lab_{i}")
                 
-                # Sync logic back to master dictionaries
                 st.session_state.kiosk_pols[p_id]["data_name"] = st.session_state[f"p_sel_{i}"]
                 st.session_state.kiosk_pols[p_id]["display_name"] = st.session_state[f"p_lab_{i}"]
 
@@ -420,7 +477,6 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
         for i in range(1, 7):
             t_id = f"T{i}"
 
-            # Initialization Check for Times
             if f"t_slider_{i}" not in st.session_state:
                 saved_time = next((t["years"] for t in st.session_state.kiosk_times if t["id"] == t_id), [max_y-5, max_y])
                 st.session_state[f"t_slider_{i}"] = tuple(saved_time)
@@ -428,69 +484,64 @@ def kiosk_config_ui(raw_df, subs_list, min_y, max_y, current_filters):
             with t_cols[0 if i <= 3 else 1]:
                 st.slider(f"Time Cycle ({t_id})", min_y, max_y, key=f"t_slider_{i}")
                 
-                # Sync logic back to master dictionaries
                 for t_entry in st.session_state.kiosk_times:
                     if t_entry["id"] == t_id:
                         t_entry["years"] = list(st.session_state[f"t_slider_{i}"])
 
-        # Auto Fill Button for Time Cycles - USING CALLBACK
-        st.button(
-            "⏱️ Auto Fill Time Cycles", 
-            use_container_width=True,
-            on_click=auto_fill_time_cycles_callback,
-            args=(min_y, max_y)
-        )
+        st.button("⏱️ Auto Fill Time Cycles", use_container_width=True, on_click=auto_fill_time_cycles_callback, args=(min_y, max_y))
 
         st.divider()
 
+        # --- EXPORT OPTIONS ---
+        st.subheader("Export Options" if lang == "EN" else "Options d'exportation")
+        c_exp1, c_exp2 = st.columns(2)
+        export_local = c_exp1.checkbox("📥 Local Download (.zip)" if lang == "EN" else "📥 Téléchargement local (.zip)", value=True)
+        export_server = c_exp2.checkbox("🚀 Deploy to Server (`./kiosk_app/Kiosk_Library`)" if lang == "EN" else "🚀 Déployer sur le serveur (`./kiosk_app/Kiosk_Library`)", value=False)
+
         # ZIP Build
-        if st.button("🚀 Generate Kiosk Library ZIP", use_container_width=True, type="secondary"):
+        if st.button("⚙️ Generate Kiosk Library" if lang == "EN" else "⚙️ Générer la bibliothèque", use_container_width=True, type="secondary"):
             if not st.session_state.kiosk_locs:
-                st.error("No locations assigned to slots.")
+                st.error("No locations assigned to slots." if lang == "EN" else "Aucun emplacement attribué.")
             else:
                 from kiosk_automation import generate_kiosk_zip
                 progress_bar = st.progress(0)
                 status_box = st.empty()
                 
-                # Setup callback for dynamic updates
                 def build_progress_callback(current_step, total_steps, message):
                     percent = int((current_step / max(1, total_steps)) * 100)
                     progress_bar.progress(min(percent, 100))
                     status_box.info(f"⚙️ {message}...")
                 
                 try:
-                    with st.spinner("Building Library..."):
-                        # Passing the callback to the generator
-                        result = generate_kiosk_zip(
+                    with st.spinner("Building Library..." if lang == "EN" else "Construction de la bibliothèque..."):
+                        # Now returns actual bytes (getvalue())
+                        z_bytes, missing_logs = generate_kiosk_zip(
                             raw_df, 
                             st.session_state.kiosk_locs, 
                             st.session_state.kiosk_pols, 
                             st.session_state.kiosk_times,
                             progress_callback=build_progress_callback
                         )
-                        
-                        # Unpack results securely
-                        if isinstance(result, tuple):
-                            z_file, missing_logs = result
-                        else:
-                            z_file = result
-                            missing_logs = []
 
                     progress_bar.progress(100)
-                    status_box.success("✅ Library Built!")
+                    status_box.success("✅ Library Built!" if lang == "EN" else "✅ Bibliothèque générée !")
                     
-                    # Display Warnings if missing data exists
                     if missing_logs:
                         st.warning("⚠️ **Missing Data Warning:** Some reports could not be generated because no data was recorded for the selected location, pollutant, and timeframe.")
-                        with st.expander("Review Missing Reports Details"):
+                        with st.expander("Review Missing Reports Details" if lang == "EN" else "Voir les détails des rapports manquants"):
                             st.code("\n".join(missing_logs))
                     
-                    st.download_button("📥 Download Kiosk ZIP", z_file, "Kiosk_Library.zip", use_container_width=True)
+                    # SERVER DEPLOYMENT
+                    if export_server:
+                        extract_path = "./kiosk_app/Kiosk_Library"
+                        os.makedirs(extract_path, exist_ok=True)
+                        with zipfile.ZipFile(io.BytesIO(z_bytes)) as zf:
+                            zf.extractall(extract_path)
+                        st.success(f"🚀 Extracted library to `{extract_path}`!" if lang == "EN" else f"🚀 Bibliothèque extraite vers `{extract_path}` !")
+
+                    # LOCAL DOWNLOAD
+                    if export_local:
+                        st.download_button("📥 Download Kiosk ZIP" if lang == "EN" else "📥 Télécharger le ZIP", z_bytes, "Kiosk_Library.zip", use_container_width=True)
                     
-                except TypeError as e:
-                    if "progress_callback" in str(e):
-                        st.error("⚠️ Setup needed: You must update `generate_kiosk_zip` in `kiosk_automation.py` to accept the `progress_callback` argument!")
-                    else:
-                        st.error(f"Generation Failed: {e}")
                 except Exception as e:
                     st.error(f"Generation Failed: {e}")

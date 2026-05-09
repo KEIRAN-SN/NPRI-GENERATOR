@@ -36,7 +36,6 @@ def generate_kiosk_zip(df, loc_map, pol_map, time_list, progress_callback=None):
                     loc_df = loc_df[loc_df["Facility"] == l_info["fac"]]
 
             # ENFORCE THE LABEL: Ensure we use the label defined in the Kiosk Config
-            # This prevents "Mining" or other filter-based labels from overriding the user input.
             final_location_label = l_info.get("display_label", "Unknown Location")
 
             # 2. GENERATE BILINGUAL REPORTS
@@ -68,7 +67,7 @@ def generate_kiosk_zip(df, loc_map, pol_map, time_list, progress_callback=None):
                             f_df_en["Quantity"].sum(), 
                             f_df_en["Units"].iloc[0], 
                             en_label,            
-                            final_location_label, # Use the enforced label here
+                            final_location_label, 
                             time_label,
                             lang="EN"            
                         )
@@ -86,7 +85,7 @@ def generate_kiosk_zip(df, loc_map, pol_map, time_list, progress_callback=None):
                             f_df_fr["Quantity"].sum(), 
                             f_df_fr["Units"].iloc[0], 
                             p_target_fr,         
-                            final_location_label, # Use the enforced label here
+                            final_location_label, 
                             time_label,
                             lang="FR"            
                         )
@@ -104,5 +103,8 @@ def generate_kiosk_zip(df, loc_map, pol_map, time_list, progress_callback=None):
                         
     zip_buffer.seek(0)
     
-    # Return both the zip buffer and the missing data log array
-    return zip_buffer, missing_data_log
+    # CRITICAL FIX: Return the actual bytes using getvalue() to avoid BytesIO conflict in UI
+    final_zip_data = zip_buffer.getvalue()
+    zip_buffer.close()
+    
+    return final_zip_data, missing_data_log

@@ -3,3 +3,5 @@ data/
 .env
 __pycache__/
 *.log
+rfid_database.json
+kiosk_app/

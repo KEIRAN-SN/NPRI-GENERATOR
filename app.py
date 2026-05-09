@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from data_engine import process_files, filter_by_radius, normalize_quantity
-from ui_components import workspace_manager_ui, kiosk_config_ui
+from ui_components import workspace_manager_ui, rfid_hardware_mapper_ui, kiosk_config_ui
 from dashboard import render_main_dashboard
 
 # --- PAGE SETUP ---
@@ -278,7 +278,9 @@ def main():
     
     st.divider()
     
-    # Render Kiosk Generation Tools
+    # Render Hardware & Kiosk Generation Tools
+    rfid_hardware_mapper_ui()
+    
     subs_list = raw_df[f"Substance_{st.session_state.lang}"].dropna().unique().tolist()
     min_y, max_y = int(raw_df["Year"].min()), int(raw_df["Year"].max())
     kiosk_config_ui(raw_df, subs_list, min_y, max_y, {})
