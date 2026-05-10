@@ -17,12 +17,12 @@ kiosk_app/*
 !kiosk_app/Kiosk_Library/
 kiosk_app/Kiosk_Library/*
 !kiosk_app/Kiosk_Library/help_fr.html
-!kiosk_app/Kiosk_Library/help_en.html
 !kiosk_app/Kiosk_Library/logo.webp
 !kiosk_app/Kiosk_Library/welcome_fr.html
 !kiosk_app/Kiosk_Library/welcome_en.html
 !kiosk_app/Kiosk_Library/welcome_video.webm
 !kiosk_app/Kiosk_Library/welcome.html
+!kiosk_app/Kiosk_Library/help.html
 
 # 3. Allow the source folder but ignore its build artifacts
 !kiosk_app/source/
