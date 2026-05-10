@@ -9,7 +9,8 @@ set "VENV_DIR=venv"
 set "KIOSK_DIR=kiosk_app"
 set "EXE_NAME=NPRI Viewer.exe"
 set "PORT=3500"
-set "PYTHON_URL=https://www.python.org/downloads/windows/"
+set "PYTHON_VER=3.12.2"
+set "PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_VER%/python-%PYTHON_VER%-amd64.exe"
 set "REPO_URL=https://github.com/KEIRAN-SN/NPRI-GENERATOR"
 
 :: 1. Initialize Log File (Overwrites old logs)
@@ -76,45 +77,44 @@ if not exist "%~dp0app.py" (
 echo [3/10] CHECKING PYTHON...
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [LOG] Python not found. Prompting manual install to avoid AV false positives. >> "%LOGFILE%"
-    echo.
-    echo ======================================================================
-    echo Python was not found on this system.
-    echo To prevent Antivirus warnings, this script cannot download it for you.
-    echo.
-    echo Please install Python manually:
-    echo 1. Your browser will now open to the official Python download page.
-    echo 2. Download the latest Windows installer.
-    echo 3. IMPORTANT: Check "Add python.exe to PATH" at the bottom of the installer!
-    echo 4. Complete the installation.
-    echo ======================================================================
-    echo.
-    echo Opening browser...
-    start %PYTHON_URL%
-    echo Press any key AFTER you have successfully installed Python...
-    pause >nul
-
-    :: Refreshing PATH for this session only in case the system environment hasn't updated
-    python --version >nul 2>&1
+    echo [LOG] Python not found. Starting fresh install. >> "%LOGFILE%"
+    echo Python not found. Downloading installer...
+    
+    curl -L %PYTHON_URL% -o python_installer.exe
     if !errorlevel! neq 0 (
-        :: Try finding the most common install paths for Python 3.10 to 3.12
-        for %%V in (312 311 310) do (
-            if exist "%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe" (
-                set "PYTHON_CMD=%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe"
-            ) else if exist "C:\Program Files\Python%%V\python.exe" (
-                set "PYTHON_CMD=C:\Program Files\Python%%V\python.exe"
-            )
-        )
-        
-        if defined PYTHON_CMD (
-            echo [LOG] Found Python manually at: !PYTHON_CMD! >> "%LOGFILE%"
-        ) else (
-            echo ERROR: Could not locate Python after manual install. >> "%LOGFILE%"
-            set "ERR_MSG=Python was not found. Please restart your computer and try running setup again."
+        echo WARNING: curl failed. Trying PowerShell fallback... >> "%LOGFILE%"
+        powershell -Command "Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile 'python_installer.exe'"
+        if !errorlevel! neq 0 (
+            echo ERROR: Download failed via both curl and PowerShell. >> "%LOGFILE%"
+            set "ERR_MSG=Failed to download Python installer. Please check your internet connection."
             goto :FAILURE
         )
+    )
+
+    if not exist python_installer.exe (
+        echo ERROR: python_installer.exe not found after download. >> "%LOGFILE%"
+        set "ERR_MSG=Python installer was blocked or deleted by the system."
+        goto :FAILURE
+    )
+
+    echo Installing Python %PYTHON_VER%... Please accept any UAC prompts.
+    start /wait python_installer.exe PrependPath=1 Include_test=0
+    del python_installer.exe
+
+    :: Refreshing PATH for this session only
+    set "PY_PATH=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+    if exist "!PY_PATH!" (
+        set "PYTHON_CMD=!PY_PATH!"
+        echo [LOG] Using manual path: !PY_PATH! >> "%LOGFILE%"
     ) else (
-        set "PYTHON_CMD=python"
+        set "PY_PATH=C:\Program Files\Python312\python.exe"
+        if exist "!PY_PATH!" (
+            set "PYTHON_CMD=!PY_PATH!"
+        ) else (
+            echo ERROR: Could not locate Python after install. >> "%LOGFILE%"
+            set "ERR_MSG=Python was installed but the script cannot find the executable."
+            goto :FAILURE
+        )
     )
 ) else (
     set "PYTHON_CMD=python"
@@ -184,6 +184,7 @@ echo Installing Streamlit...
 pip install streamlit >> "%LOGFILE%" 2>&1
 
 
+:SearchEXE
 echo [8/10] SEARCHING FOR %EXE_NAME%...
 set "EXE_SOURCE_PATH="
 
@@ -213,6 +214,34 @@ if not defined EXE_SOURCE_PATH (
             set "EXE_SOURCE_PATH=%~dp0%KIOSK_DIR%\%EXE_NAME%"
         ) else (
             echo User cancelled file selection. >> "%LOGFILE%"
+        )
+    ) else (
+        echo User declined upload. Prompting to build from source... >> "%LOGFILE%"
+        
+        :: Prompt user to build from source
+        powershell -Command "Add-Type -AssemblyName PresentationFramework; $msg = 'Would you like the system to try and build the executable from the source code?'; $result = [System.Windows.MessageBox]::Show($msg, 'Build from Source?', 'YesNo', 'Question'); if ($result -eq 'No') { exit 1 } else { exit 0 }"
+        
+        if !errorlevel! equ 0 (
+            echo [LOG] User opted to build from source. >> "%LOGFILE%"
+            echo Installing required build packages ^(PyQt6, pynput, etc.^)...
+            pip install PyQt6 PyQt6-WebEngine pynput pyinstaller >> "%LOGFILE%" 2>&1
+            
+            if exist "%~dp0kiosk_app\source\build_exe.bat" (
+                echo Building the executable... This may take a few minutes.
+                
+                :: Change into the source directory to ensure the build script runs correctly
+                pushd "%~dp0kiosk_app\source"
+                call build_exe.bat >> "%LOGFILE%" 2>&1
+                popd
+                
+                echo Build script finished. Rescanning for executable...
+                goto :SearchEXE
+            ) else (
+                echo ERROR: build_exe.bat not found in %~dp0kiosk_app\source\ >> "%LOGFILE%"
+                powershell -Command "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('Could not find build_exe.bat in kiosk_app\source.', 'Build Error', 'OK', 'Error');"
+            )
+        ) else (
+            echo User declined to build from source. >> "%LOGFILE%"
         )
     )
 )
